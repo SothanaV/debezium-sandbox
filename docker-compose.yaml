@@ -22,6 +22,17 @@ services:
         - 1521:1521
     volumes:
       - ./oracle-init:/container-entrypoint-initdb.d
+  
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: mssql
+    ports:
+      - "1433:1433"
+    environment:
+      SA_PASSWORD: "YourStrong!Passw0rd"
+      ACCEPT_EULA: "Y"
+      # for CDC
+      MSSQL_AGENT_ENABLED: True
 
   # 2. Redis (Unchanged)
   redis:
@@ -89,6 +100,37 @@ services:
       - DEBEZIUM_SOURCE_SCHEMA_INCLUDE_LIST=C##APPUSER
       
       # Offset & Schema History Storage (Crucial for Oracle without Kafka)
+      - DEBEZIUM_SOURCE_OFFSET_STORAGE_FILE_FILENAME=/debezium/data/offsets.dat
+      - DEBEZIUM_SOURCE_SCHEMA_HISTORY_INTERNAL=io.debezium.storage.redis.history.RedisSchemaHistory
+      - DEBEZIUM_SOURCE_SCHEMA_HISTORY_INTERNAL_REDIS_ADDRESS=redis:6379
+
+  debezium-server-mssql:
+    image: quay.io/debezium/server:2.7
+    container_name: debezium_server_mssql
+    restart: on-failure
+    depends_on:
+      - mssql
+      - redis
+    environment:
+      - DEBEZIUM_SINK_TYPE=redis
+      - DEBEZIUM_SINK_REDIS_ADDRESS=redis:6379
+      
+      # SQL Server Source Configuration
+      - DEBEZIUM_SOURCE_CONNECTOR_CLASS=io.debezium.connector.sqlserver.SqlServerConnector
+      - DEBEZIUM_SOURCE_DATABASE_HOSTNAME=mssql
+      - DEBEZIUM_SOURCE_DATABASE_PORT=1433
+      - DEBEZIUM_SOURCE_DATABASE_USER=sa
+      - DEBEZIUM_SOURCE_DATABASE_PASSWORD=YourStrong!Passw0rd
+      - DEBEZIUM_SOURCE_DATABASE_NAMES=sourcedb
+      - DEBEZIUM_SOURCE_TOPIC_PREFIX=cdc-mssql
+      
+      # Important: Disable SSL cert check for SQL Server 2022 (prevent PKIX errors)
+      - DEBEZIUM_SOURCE_DATABASE_ENCRYPT=false
+      
+      # # Only capture tables that have CDC enabled
+      # - DEBEZIUM_SOURCE_TABLE_INCLUDE_LIST=dbo
+      
+      # Offset & Schema History Storage
       - DEBEZIUM_SOURCE_OFFSET_STORAGE_FILE_FILENAME=/debezium/data/offsets.dat
       - DEBEZIUM_SOURCE_SCHEMA_HISTORY_INTERNAL=io.debezium.storage.redis.history.RedisSchemaHistory
       - DEBEZIUM_SOURCE_SCHEMA_HISTORY_INTERNAL_REDIS_ADDRESS=redis:6379
