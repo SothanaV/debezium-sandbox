@@ -1,0 +1,121 @@
+services:
+  # 1. PostgreSQL (Unchanged)
+  postgres:
+    image: postgres:18.0-alpine
+    container_name: postgres_db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_DB=sourcedb
+    # This command is critical: it enables logical replication for Debezium
+    command: ["postgres", "-c", "wal_level=logical"]
+  
+  oracle:
+    image: gvenzl/oracle-free:23.8-full
+    environment:
+      - ORACLE_PASSWORD=password
+      - APP_USER=my_user
+      - APP_USER_PASSWORD=password_i_should_change
+    ports:
+        - 1521:1521
+    volumes:
+      - ./oracle-init:/container-entrypoint-initdb.d
+
+  # 2. Redis (Unchanged)
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+  
+  redis-insight:
+    container_name: redis-insight
+    image: redislabs/redisinsight:2.66
+    # volumes:
+    #   - redisinsight_data:/data
+    # env_file:
+    #   - .env
+    ports:
+      - 5540:5540
+
+  # 3. Debezium Server (Replaces Kafka + Zookeeper + Debezium Connect)
+  debezium-server:
+    image: quay.io/debezium/server:2.4
+    container_name: debezium_server
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      # Set the sink (output) to Redis
+      - DEBEZIUM_SINK_TYPE=redis
+      - DEBEZIUM_SINK_REDIS_ADDRESS=redis:6379
+      
+      # Configure the source (PostgreSQL) directly in the environment variables
+      - DEBEZIUM_SOURCE_CONNECTOR_CLASS=io.debezium.connector.postgresql.PostgresConnector
+      - DEBEZIUM_SOURCE_DATABASE_HOSTNAME=postgres
+      - DEBEZIUM_SOURCE_DATABASE_PORT=5432
+      - DEBEZIUM_SOURCE_DATABASE_USER=admin
+      - DEBEZIUM_SOURCE_DATABASE_PASSWORD=secret
+      - DEBEZIUM_SOURCE_DATABASE_DBNAME=sourcedb
+      - DEBEZIUM_SOURCE_TOPIC_PREFIX=cdc
+      - DEBEZIUM_SOURCE_SCHEMA_INCLUDE_LIST=public
+      # - DEBEZIUM_SOURCE_TABLE_INCLUDE_LIST=public.users,public.orders
+      - DEBEZIUM_SOURCE_PLUGIN_NAME=pgoutput
+
+      - DEBEZIUM_SOURCE_OFFSET_STORAGE_FILE_FILENAME=/debezium/data/offsets.dat
+  
+  debezium-server-oracle:
+    image: quay.io/debezium/server:2.7
+    container_name: debezium_server_oracle
+    restart: on-failure
+    depends_on:
+      - oracle
+      - redis
+    environment:
+      - DEBEZIUM_SINK_TYPE=redis
+      - DEBEZIUM_SINK_REDIS_ADDRESS=redis:6379
+      
+      # Oracle Source Configuration
+      - DEBEZIUM_SOURCE_CONNECTOR_CLASS=io.debezium.connector.oracle.OracleConnector
+      - DEBEZIUM_SOURCE_DATABASE_HOSTNAME=oracle
+      - DEBEZIUM_SOURCE_DATABASE_PORT=1521
+      - DEBEZIUM_SOURCE_DATABASE_USER=c##dbzuser
+      - DEBEZIUM_SOURCE_DATABASE_PASSWORD=dbzpassword
+      - DEBEZIUM_SOURCE_DATABASE_DBNAME=FREE
+      - DEBEZIUM_SOURCE_TOPIC_PREFIX=cdc-oracle
+
+      - DEBEZIUM_SOURCE_SCHEMA_INCLUDE_LIST=C##APPUSER
+      
+      # Offset & Schema History Storage (Crucial for Oracle without Kafka)
+      - DEBEZIUM_SOURCE_OFFSET_STORAGE_FILE_FILENAME=/debezium/data/offsets.dat
+      - DEBEZIUM_SOURCE_SCHEMA_HISTORY_INTERNAL=io.debezium.storage.redis.history.RedisSchemaHistory
+      - DEBEZIUM_SOURCE_SCHEMA_HISTORY_INTERNAL_REDIS_ADDRESS=redis:6379
+
+  # 4. MinIO (Unchanged)
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+    container_name: minio_storage
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+
+  # 5. Python Consumer (Updated to rely only on Redis)
+  # python-consumer:
+  #   build:
+  #     context: ./python-consumer
+  #   command: ["python", "arg"]
+  #   container_name: python_consumer
+  #   depends_on:
+  #     - redis
+  #     - minio
+  #   environment:
+  #     - REDIS_HOST=redis
+  #     - MINIO_ENDPOINT=minio:9000
+  #     - MINIO_ACCESS_KEY=minioadmin
+  #     - MINIO_SECRET_KEY=minioadmin
