@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker exec *)",
+      "Bash(docker run *)",
+      "Bash(docker compose *)",
+      "Bash(curl -sI \"https://repo1.maven.org/maven2/com/oracle/database/jdbc/ojdbc11/23.2.0.0/ojdbc11-23.2.0.0.jar\")",
+      "Bash(curl -s \"https://quay.io/api/v1/repository/debezium/server/tag/?limit=10&page=1\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s \"https://quay.io/api/v1/repository/debezium/server/tag/?limit=50&page=1\")",
+      "Bash(python3 -c \"import sys,json; tags=json.load\\(sys.stdin\\)['tags']; [print\\(t['name']\\) for t in tags]\")",
+      "Bash(curl -s \"https://hub.docker.com/v2/repositories/gvenzl/oracle-free/tags?page_size=50&ordering=last_updated\")",
+      "Bash(python3 -c \"import sys,json; tags=json.load\\(sys.stdin\\)['results']; [print\\(t['name']\\) for t in tags if 'full' in t['name']]\")",
+      "Bash(curl -s \"https://hub.docker.com/v2/repositories/gvenzl/oracle-free/tags?page_size=100&ordering=last_updated&page=2\")",
+      "Bash(python3 -c \"import sys,json; tags=json.load\\(sys.stdin\\)['results']; [print\\(t['name']\\) for t in tags if 'full' in t['name'] and 'faststart' not in t['name'] and 'arm' not in t['name'] and 'amd' not in t['name']]\")",
+      "Bash(chmod +x /Users/sothanav/Desktop/project/sothana/debezium-sandbox/oracle-init/01-enable-archivelog.sh)"
+    ]
+  }
+}
